@@ -27,10 +27,10 @@ class ProtobufToBigquerySpec
             min2 == max1 + 1 && min1 <= max1 && min2 <= max2
         }
       val messageIdPairs: Seq[(Int, Int)] = node.files.flatMap { f =>
-        (f.minMessageId.map((_, f.maxMessageId.get)))
+        f.minMessageId.map((_, f.maxMessageId.get))
       }
       val enumIdPairs: Seq[(Int, Int)] = node.files.flatMap { f =>
-        (f.minEnumId.map((_, f.maxEnumId.get)))
+        f.minEnumId.map((_, f.maxEnumId.get))
       }
       validateMinMax(messageIdPairs) && validateMinMax(enumIdPairs)
     }
