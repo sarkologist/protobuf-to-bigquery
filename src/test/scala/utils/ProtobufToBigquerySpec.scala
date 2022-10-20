@@ -74,7 +74,7 @@ class ProtobufToBigquerySpec
               val node = schema.rootNode.messagesById(msgId)
               forAll(GenData.genParsedMessage(schema, node)) { msg =>
                 val schema   = makeTableSchema(msg.getDescriptorForType)
-                val tablerow = makeTableRow { case (_, b) => b }(msg)
+                val tablerow = makeTableRow(msg)
 
                 for (path <- pathsOf(tablerow)) {
                   val assertion = walk(path, schema).nonEmpty
@@ -128,7 +128,7 @@ class ProtobufToBigquerySpec
                   .filter(isTerminalPath)
                   .map(DisableShrink[Seq[Segment]])) :| "path") {
                 case DisableShrink(path) =>
-                  val row = makeTableRow { case (_, b) => b }(msg)
+                  val row = makeTableRow(msg)
 
                   val leafParentMessage =
                     walk(localContext(path), msg).get.asInstanceOf[Message]
@@ -196,8 +196,8 @@ class ProtobufToBigquerySpec
             msg2 <- GenData.genParsedMessage(schema, node)
           } yield (msg1, msg2)) :| "generated message pair") {
             case (msgOne, msgTwo) =>
-              val tr1 = makeTableRow { case (_, b) => b }(msgOne)
-              val tr2 = makeTableRow { case (_, b) => b }(msgTwo)
+              val tr1 = makeTableRow(msgOne)
+              val tr2 = makeTableRow(msgTwo)
 
               forAll(Gen.oneOf(pathsOf(msgOne) ++ pathsOf(msgTwo)) :| "path") {
                 path =>

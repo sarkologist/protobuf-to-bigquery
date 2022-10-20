@@ -111,11 +111,12 @@ object ProtobufToBigQuery extends Serializable {
         !oneOfFields.contains(f) && (f.isOptional || f.isRequired)
     }
 
-  def makeTableRow(
-      customRow: (FieldDescriptor,
-                  Yoneda[Repeated, Any]) => Yoneda[Repeated, Any])
-    : Message => TableRow =
-    msg => {
+  def makeTableRow(msg: Message,
+                   customRow: (FieldDescriptor,
+                     Yoneda[Repeated, Any]) => Yoneda[Repeated, Any]
+                   = { case (_, x) => x })
+    : TableRow =
+    {
       def base(value: AnyRef, f: FieldDescriptor): Any =
         toBigQueryType(f.getType)(value)
 
