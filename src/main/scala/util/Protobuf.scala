@@ -36,6 +36,14 @@ object Protobuf {
       Many(value.asInstanceOf[util.List[A]].asScala)
     else One(value.asInstanceOf[A])
 
+  /**
+  - recursively traverse `Message`, producing `A`
+  - Yoneda is for efficient `.map`-ing.
+    it composes mapped functions without applying until `Yoneda.run` is called
+  - note that this is a *paramorphism* instead of just a *catamorphism*, i.e.
+    each recursive step keeps the `Message` value at that level.
+    this is helpful e.g. to tell at runtime if the `Message` is a leaf
+   */
   def foldMessage[A](
       recurse: Seq[(Yoneda[Repeated, (A, Message)], FieldDescriptor)] => A,
       base: (AnyRef, FieldDescriptor) => A)(message: Message): A = {
@@ -55,7 +63,7 @@ object Protobuf {
           }
 
       val allFields = defaultValues(msg)().foldLeft(presentFields) {
-        case (fields, (f, value)) =>
+        case (fields, (f: FieldDescriptor, value)) =>
           fields :+ Yoneda(lift[AnyRef](f, value))
             .map(v => base(v, f) -> msg) -> f
       }
@@ -66,12 +74,16 @@ object Protobuf {
     go(message)
   }
 
+  /**
+   the protobuf `Message` type does not represent fields whose values are default
+   */
   def defaultValues(message: Message)(presentFields: Set[FieldDescriptor] =
                                         message.getAllFields.asScala.keys.toSet)
     : Set[(FieldDescriptor, AnyRef)] = {
     val absentFields         = message.getDescriptorForType.getFields.asScala.toSet -- presentFields
     val oneOfFieldsOfMessage = oneOfFields(message.getDescriptorForType)
 
+    // oneof fields don't have default values
     (absentFields -- oneOfFieldsOfMessage)
       .map { field =>
         if (!field.isRepeated)
@@ -86,12 +98,19 @@ object Protobuf {
       .collect { case Some(pair) => pair }
   }
 
+
+  /**
+   *  oneof fields don't have default values
+   */
   def oneOfFields(descriptor: Descriptor): Set[FieldDescriptor] = {
     descriptor.getOneofs.asScala
       .flatMap(_.getFields.asScala)
       .toSet
   }
 
+  /**
+   * all protobuf field values can be repeated
+   */
   sealed trait Repeated[A] {
     def underlying: AnyRef
   }

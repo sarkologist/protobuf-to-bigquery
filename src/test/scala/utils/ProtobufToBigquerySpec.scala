@@ -58,7 +58,7 @@ class ProtobufToBigquerySpec
                 GenData
                   .genParsedMessage(schema, node)
               ) { msg =>
-                !hitBottom(msg) || hitPotentialBottom(msg.getDescriptorForType)
+                !hitActualBottom(msg) || hitPotentialBottom(msg.getDescriptorForType)
               }
           }
         }

@@ -27,12 +27,13 @@ object ProtobufToBigQuery extends Serializable {
     case MESSAGE | GROUP => "RECORD"
   }
 
-  // protobuf messages have potentially unlimited depth, since
-  // message-inside-message recursion is possible
-  // that doesn't mean we cannot produce a schema though
-  // provided at runtime messages written to the table are never
-  // beyond the max depth
-  // https://cloud.google.com/bigquery/docs/nested-repeated#limitations
+  /** protobuf messages have potentially unlimited depth, since
+   * message-inside-message recursion is possible.
+   * that doesn't mean we cannot produce a schema though
+   * provided at runtime messages written to the table are never
+   * beyond the max depth
+   * see: https://cloud.google.com/bigquery/docs/nested-repeated#limitations
+   */
   def makeTableSchema(descriptor: Descriptor): TableSchema = {
     def base(
         f: FieldDescriptor): Either[TableFieldSchema, List[TableFieldSchema]] =
@@ -74,7 +75,12 @@ object ProtobufToBigQuery extends Serializable {
     f.getName.replace(".", "_")
   }
 
-  // unlike `hitBottom` this is static
+  /** unlike `hitBottom` this is static,
+   *  i.e. a property of the `Descriptor` schema, not of the `Message` value
+   *
+   * the bottom "potential" in the sense that a value of `Message` may bottom-out for this `Descriptor`,
+   * even though *schema-wise* a `Message` can have potentially infinite-depth
+   */
   def hitPotentialBottom(d: Descriptor): Boolean = {
     d.getFields.asScala.forall(f =>
       f.getType match {
@@ -83,16 +89,19 @@ object ProtobufToBigQuery extends Serializable {
     })
   }
 
-  // note that this is not static, i.e.
-  // it depends on the message at runtime not just the schema
-  // it cannot depend on the schema as message trees have unbounded depth due to recursion
-  def hitBottom(message: Message): Boolean = {
-    def isNotFurtherMessage(fieldDescriptor: FieldDescriptor): Boolean =
+  /**
+   * note that this is not static, i.e.
+   * i.e. a property of the `Message` value at runtime not just the `Descriptor` schema
+   *
+   * *schema-wise* a `Message` can have potentially infinite-depth
+   */
+  def hitActualBottom(message: Message): Boolean = {
+    def doesNotRecurse(fieldDescriptor: FieldDescriptor): Boolean =
       fieldDescriptor.getType match {
         case MESSAGE | GROUP => false
         case _               => true
       }
-    message.getAllFields.asScala.keys.forall(isNotFurtherMessage)
+    message.getAllFields.asScala.keys.forall(doesNotRecurse)
   }
 
   def hasAlwaysPresentFields(descriptor: Descriptor): Boolean =
@@ -118,7 +127,7 @@ object ProtobufToBigQuery extends Serializable {
     : TableRow =
     {
       def base(value: AnyRef, f: FieldDescriptor): Any =
-        toBigQueryType(f.getType)(value)
+        toBigQueryPrimitiveType(f.getType)(value)
 
       def recurse(
           children: Seq[(Yoneda[Repeated, (Any, Message)], FieldDescriptor)])
@@ -130,7 +139,7 @@ object ProtobufToBigQuery extends Serializable {
               repeated
                 .map {
                   case (child: TableRow, msg) =>
-                    if (!f.isRepeated && hitBottom(msg) && needsToFlagPresence(
+                    if (!f.isRepeated && hitActualBottom(msg) && needsToFlagPresence(
                           f))
                       child.set(_set, true)
                     else child
@@ -181,9 +190,9 @@ object ProtobufToBigQuery extends Serializable {
   }
 
   def needsToFlagPresence(f: FieldDescriptor): Boolean =
-    !f.isRequired && !hasAlwaysPresentFields(f.getMessageType)
+    !(f.isRequired || hasAlwaysPresentFields(f.getMessageType))
 
-  def toBigQueryType(f: FieldDescriptor.Type)(v: AnyRef): Any = f match {
+  def toBigQueryPrimitiveType(f: FieldDescriptor.Type)(v: AnyRef): Any = f match {
     case DOUBLE => v.asInstanceOf[Double]
     case FLOAT  => v.asInstanceOf[Float]
     case INT32 | UINT32 | SINT32 | FIXED32 | SFIXED32 =>
